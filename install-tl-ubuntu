@@ -52,7 +52,7 @@ fi
 ERRORPREFIX="${ECHOPREFIX}ERROR: "
 WARNINGPREFIX="${ECHOPREFIX}WARNING: "
 
-ARGS=$( getopt -o "r:mt:u:hvaebo:fgq:p:i:" -l "retry:,more-tex,truetype-dir:,usr-fonts-dir:,help,version,allow-small,hebrew,no-link-ubuntu,log-dir:,only-apt-and-dpkg,no-apt-or-dpkg,repository:,profile:,iso:" \
+ARGS=$( getopt -o "r:mt:u:hvaebo:fgq:p:i:" -l "retry:,more-tex,truetype-dir:,usr-fonts-dir:,help,version,allow-small,hebrew,no-link-ubuntu,log-dir:,only-apt-and-dpkg,no-apt-or-dpkg,repository:,profile:,iso:,pretest" \
       -n "$( basename "$0" )" -- "$@" )
 # If bad arguments, exit (getopt will have already written the error to STDERR).
 [ "$?" = "0" ] || clean_error
@@ -75,6 +75,7 @@ ISO_FILE=
 ONLY_APT_DPKG=0
 NO_APT_DPKG=0
 LOG_DIR="${MAINDIR}"
+PRETEST=0
 
 while true
 do
@@ -138,6 +139,9 @@ do
         clean_error
       fi
       shift 2
+      ;;
+  -s|--pretest)  PRETEST=1
+      shift 1
       ;;
   -t|--truetype-dir)
       if [ -d "$2" ]; then
@@ -420,10 +424,16 @@ if [ -z "${TLREPO:-}" -a -z "${ISO_FILE}" ]; then
     # We skip ftp connections.
     # We only try every third server. The servers are listed in geographic
     # order so this should pick up a little of everything.
-    wget --quiet -O - "http://ctan.org/mirrors" \
-      | grep -o "http.*>http<" \
-      | sed -n 1~3p \
-      | sed 's/">http<//' > "candidates.txt"
+    if [ "${PRETEST}" = "1" ]; then
+      wget --quiet -O - "http://ctan.org/mirrors" \
+        | grep -o "http.*>http<" \
+        | sed -n 1~3p \
+        | sed 's/">http<//' > "candidates.txt"
+    else
+      wget --quiet -O - "https://www.tug.org/texlive/mirmon/" \
+        | grep -oP "HREF=\"http.*pretest/" \
+        | sed 's/HREF=\"//' > "candidates.txt"
+    fi
 
     # Note that if there is a timeout the repo does not get an entry in mirrorWgets.log.
     sed 's#$#'${testPath}'#' "candidates.txt" \
@@ -464,7 +474,11 @@ if [ -n "${ISO_FILE}" ]; then
     fi
 else
 (
-    TLINSTALLER="${TLREPO}/systems/texlive/tlnet/install-tl-unx.tar.gz"
+    if [ "${PRETEST}" = "1" ]; then
+        TLINSTALLER="${TLREPO}/install-tl-unx.tar.gz"
+    else
+        TLINSTALLER="${TLREPO}/systems/texlive/tlnet/install-tl-unx.tar.gz"
+    fi
     timesToTry=$(( TIMESRETRY + 1 ))
     timesTried=0
     fail=0
